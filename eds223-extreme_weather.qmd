@@ -32,6 +32,21 @@ pacman::p_load('tidyverse',
                'terra')
 ```
 
+```{r}
+# Function to check and align CRS of two sf objects
+check_crs <- function(target, reference) {
+  if (st_crs(target) == st_crs(reference)) {
+    message("CRSs match!")
+    return(target)  # return the original object
+  } else {
+    warning("CRSs do not match. Transforming target to match reference...")
+    target_transformed <- st_transform(target, st_crs(reference))
+    return(target_transformed)
+  }
+}
+
+```
+
 ### Data Aggregation
 
 Read in the light data
@@ -82,8 +97,25 @@ census <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
 lights_7 <- st_mosaic(lights_07_1, lights_07_2)
 
 lights_16 <- st_mosaic(lights_16_1, lights_16_2)
+```
 
-huston_change <- lights_16 - lights_7
+# Plot the difference in two days
+
+
+```{r}
+lights_before <- tm_shape(lights_7)+
+  tm_polygons()
+
+lights_after <- tm_shape(lights_16)+
+  tm_polygons()
+
+tmap_arrange(lights_before, lights_after)
+```
+
+
+
+```{r}
+huston_change <-  lights_7 - lights_16
 
 # Reclassify: 
 # Set categories for severity levels
@@ -97,14 +129,53 @@ rcl <- matrix(c(-Inf, 200, 1, # group 1 ranges for Enhanced Regrowth
 # Use reclassification matrix to reclassify dNBR raster
 reclassified <- classify(rast(huston_change), rcl = rcl)
 
-reclassified[is.nan(reclassified)] <- NA
+reclassified[reclassified == 1] <- NA
 
-blackout_mask <- st_as_sf(as.polygons(reclassified))
+houston_bbox <- c(xmin = -96.5, xmax = -94.5, 
+              ymin = 29, ymax = 30.5)
+
+
+houston_blackout <- crop(reclassified, houston_bbox)
+
+
+
+blackout_mask <- st_as_sf(as.polygons(houston_blackout))
+
+if (st_crs(blackout_mask)$epsg == 3083) {
+  print("CRS Correct!")
+} else {
+  warning("CRS DOES NOT MATCH, TRANSFORMING MANUALLY")
+  houston_blackout <- st_transform(blackout_mask, 3083)
+}
+
+# Join Roads
+
+check_crs(blackout_mask, st_as_sf(roads))
+
+roads_union <- st_union( roads) # Unify geometry
+
+roads_buffer <- st_buffer(roads_union, 200)
+
+blackout_final_roads <- st_difference(blackout_mask, roads_buffer)
+
+# Buildings 
+
+check_crs(blackout_final_roads, st_as_sf(houses))
+
+# St_intersection 
+
+# census
+
+#Left_join socioeconomic layers
+
+#Within soceoeconomic and homes experienced blackout st_join 
+
+# Data wrangling to summarize median income by census tract
+
+# Map 
+
+
 
 ```
-```{r}
 
-
-
-```
 
