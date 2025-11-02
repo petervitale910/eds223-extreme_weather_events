@@ -109,7 +109,7 @@ lights_before <- tm_shape(lights_7)+
 lights_after <- tm_shape(lights_16)+
   tm_polygons()
 
-tmap_arrange(lights_before, lights_after)
+# tmap_arrange(lights_before, lights_after)
 ```
 
 
@@ -156,14 +156,28 @@ roads_union <- st_union( roads) # Unify geometry
 
 roads_buffer <- st_buffer(roads_union, 200)
 
-blackout_final_roads <- st_difference(blackout_mask, roads_buffer)
+blackout_final_roads <- st_intersection(blackout_mask, roads_buffer)
+
+check_crs(houses, blackout_final_roads)
+
+houses_simple <- st_simplify(houses, dTolerance = 15)
+
+houston_bbox_sf <- st_as_sfc(
+  st_bbox(c(xmin = -96.5, xmax = -94.5, ymin = 29, ymax = 30.5), crs = st_crs(houses))
+)
+
+
+check_crs(houses_simple, houston_bbox_sf)
+
+houston_buildings <- st_filter(houses_simple, houston_bbox_sf)
 
 # Buildings 
 
-check_crs(blackout_final_roads, st_as_sf(houses))
+ blackout_buildings <- st_join(houston_buildings, blackout_final_roads, join = st_intersects)
 
-# St_intersection 
 
+tm_shape(blackout_buildings)+
+  tm_polygons()
 # census
 
 #Left_join socioeconomic layers
@@ -178,4 +192,15 @@ check_crs(blackout_final_roads, st_as_sf(houses))
 
 ```
 
+```{r}
+st_geometry_type(blackout_final_roads)
+st_geometry_type(houses)
+
+st_crs(blackout_final_roads)
+st_crs(houses)
+
+st_is_valid(blackout_final_roads) %>% table()
+st_is_valid(houses) %>% table()
+
+```
 
