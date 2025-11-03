@@ -18,7 +18,7 @@ In this project we will examine environmental effects of Texas storms:
 
 -   
 
-I'm going to start by loading in the neccesary packages
+I'm going to start by loading in the necessary packages
 
 ```{r}
 pacman::p_load('tidyverse', 
@@ -32,6 +32,7 @@ pacman::p_load('tidyverse',
                'terra')
 ```
 
+## Create two functions
 ```{r}
 # Function to check and align CRS of two sf objects
 check_crs <- function(target, reference) {
@@ -45,11 +46,23 @@ check_crs <- function(target, reference) {
   }
 }
 
+
+# Function to check if we are working with espg 3083
+check_3083 <- function(target) {
+  if (st_crs(target)$epsg == 3083) {
+    message("CRS ok")
+    return(target)  # return the original object
+  } else {
+    warning("CRS does not conform, transforming now")
+    target_transformed <- st_transform(target, st_crs(3083))
+    return(target_transformed)
+  }
+}
 ```
 
-### Data Aggregation
+## Data Aggregation
 
-Read in the light data
+### Light data
 
 ```{r}
 lights_07_1 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021038.h08v05.001.2021039064328.tif'))
@@ -59,7 +72,7 @@ lights_16_2 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v06
 
 ```
 
-Read in the buildings & roads
+### Buildings & roads
 
 ```{r}
 houses <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
@@ -70,7 +83,7 @@ houses <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
     quiet = TRUE)
 ```
 
-Road data
+###  Road data
 ```{r}
 roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
                  query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'",
@@ -78,7 +91,7 @@ roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
 ```
 
 
-Socioeconomic layers
+### Socioeconomic layers
 ```{r}
 st_layers(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'))
 
@@ -90,29 +103,34 @@ census <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
                   layer = 'ACS_2019_5YR_TRACT_48_TEXAS', quiet = TRUE)
 ```
 
-# Blackout mask 
+# Mosaiac the two days
 
 ```{r}
 
 lights_7 <- st_mosaic(lights_07_1, lights_07_2)
+lights_7 <- check_3083(lights_7)
 
 lights_16 <- st_mosaic(lights_16_1, lights_16_2)
+lights_16 <- check_3083(lights_16)
 ```
 
 # Plot the difference in two days
 
 
 ```{r}
-lights_before <- tm_shape(lights_7)+
-  tm_polygons()
+lights_before <- tm_shape(lights_7, bbox = houston_bbox)+
+  tm_raster()
 
-lights_after <- tm_shape(lights_16)+
-  tm_polygons()
+lights_after <- tm_shape(lights_16, bbox = houston_bbox)+
+  tm_raster()
 
-# tmap_arrange(lights_before, lights_after)
+huston_change <-  lights_7 - lights_16
+
+tm_shape(huston_change)+
+  tm_raster()
 ```
 
-
+## Blackout mask
 
 ```{r}
 huston_change <-  lights_7 - lights_16
@@ -141,13 +159,11 @@ houston_blackout <- crop(reclassified, houston_bbox)
 
 blackout_mask <- st_as_sf(as.polygons(houston_blackout))
 
-if (st_crs(blackout_mask)$epsg == 3083) {
-  print("CRS Correct!")
-} else {
-  warning("CRS DOES NOT MATCH, TRANSFORMING MANUALLY")
-  houston_blackout <- st_transform(blackout_mask, 3083)
-}
+blackout_mask <-check_3083(blackout_mask)
+```
 
+## Roads
+```{R}
 # Join Roads
 
 check_crs(blackout_mask, st_as_sf(roads))
@@ -162,11 +178,6 @@ check_crs(houses, blackout_final_roads)
 
 houses_simple <- st_simplify(houses, dTolerance = 15)
 
-houston_bbox_sf <- st_as_sfc(
-  st_bbox(c(xmin = -96.5, xmax = -94.5, ymin = 29, ymax = 30.5), crs = st_crs(houses))
-)
-
-
 check_crs(houses_simple, houston_bbox_sf)
 
 houston_buildings <- st_filter(houses_simple, houston_bbox_sf)
@@ -175,32 +186,50 @@ houston_buildings <- st_filter(houses_simple, houston_bbox_sf)
 
  blackout_buildings <- st_join(houston_buildings, blackout_final_roads, join = st_intersects)
 
+homes_in_blackout <- blackout_buildings %>%
+  filter(!is.na(`VNP46A1.A2021038.h08v05.001.2021039064328.tif`))
 
-tm_shape(blackout_buildings)+
+
+tm_shape(homes_in_blackout)+
   tm_polygons()
+```
+
+
+## Census 
+```{R}
 # census
 
 #Left_join socioeconomic layers
 
+# To do this i need to change the name of a column in income
+colnames(income)[1] = 'GEOID_Data'
+
+layer_join <- left_join(  census,income, by = 'GEOID_Data')
+
 #Within soceoeconomic and homes experienced blackout st_join 
+layer_join <- check_3083(layer_join)
+
+blackout_buildings <- check_3083(blackout_buildings)
+
+blackout_layers <- st_join(blackout_buildings, layer_join, join = st_within)
 
 # Data wrangling to summarize median income by census tract
 
+blackout_summary <- blackout_layers %>% 
+  group_by(NAMELSAD) %>% 
+  summarise(median_income = median(B19013e1),
+            blackouts = sum(VNP46A1.A2021038.h08v05.001.2021039064328.tif)) %>% 
+  ungroup()
+```
+
+
+## Map 
+```{R}
 # Map 
 
 
 
 ```
 
-```{r}
-st_geometry_type(blackout_final_roads)
-st_geometry_type(houses)
 
-st_crs(blackout_final_roads)
-st_crs(houses)
-
-st_is_valid(blackout_final_roads) %>% table()
-st_is_valid(houses) %>% table()
-
-```
 
