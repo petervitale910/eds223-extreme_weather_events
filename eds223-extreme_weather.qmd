@@ -33,6 +33,7 @@ pacman::p_load('tidyverse',
 ```
 
 ## Create two functions
+
 ```{r}
 # Function to check and align CRS of two sf objects
 check_crs <- function(target, reference) {
@@ -83,15 +84,16 @@ houses <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
     quiet = TRUE)
 ```
 
-###  Road data
+### Road data
+
 ```{r}
 roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
                  query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'",
                  quiet = TRUE)
 ```
 
-
 ### Socioeconomic layers
+
 ```{r}
 st_layers(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'))
 
@@ -115,7 +117,6 @@ lights_16 <- check_3083(lights_16)
 ```
 
 # Plot the difference in two days
-
 
 ```{r}
 lights_before <- tm_shape(lights_7, bbox = houston_bbox)+
@@ -163,6 +164,7 @@ blackout_mask <-check_3083(blackout_mask)
 ```
 
 ## Roads
+
 ```{R}
 # Join Roads
 
@@ -174,17 +176,19 @@ roads_buffer <- st_buffer(roads_union, 200)
 
 blackout_final_roads <- st_intersection(blackout_mask, roads_buffer)
 
-check_crs(houses, blackout_final_roads)
+houses <- check_3083(houses)
 
-houses_simple <- st_simplify(houses, dTolerance = 15)
+blackout_final_roads <-  check_3083(blackout_final_roads)
 
-check_crs(houses_simple, houston_bbox_sf)
+check_crs(blackout_final_roads, houses)
 
-houston_buildings <- st_filter(houses_simple, houston_bbox_sf)
+blackout_buildings <- houses %>% 
+  st_filter(y = st_union(blackout_final_roads))
+
 
 # Buildings 
 
- blackout_buildings <- st_join(houston_buildings, blackout_final_roads, join = st_intersects)
+
 
 homes_in_blackout <- blackout_buildings %>%
   filter(!is.na(`VNP46A1.A2021038.h08v05.001.2021039064328.tif`))
@@ -194,8 +198,8 @@ tm_shape(homes_in_blackout)+
   tm_polygons()
 ```
 
+## Census
 
-## Census 
 ```{R}
 # census
 
@@ -204,7 +208,7 @@ tm_shape(homes_in_blackout)+
 # To do this i need to change the name of a column in income
 colnames(income)[1] = 'GEOID_Data'
 
-layer_join <- left_join(  census,income, by = 'GEOID_Data')
+layer_join <- left_join(census,income, by = 'GEOID_Data')
 
 #Within soceoeconomic and homes experienced blackout st_join 
 layer_join <- check_3083(layer_join)
@@ -222,14 +226,11 @@ blackout_summary <- blackout_layers %>%
   ungroup()
 ```
 
+## Map
 
-## Map 
 ```{R}
 # Map 
 
 
 
 ```
-
-
-
