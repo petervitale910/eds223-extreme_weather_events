@@ -20,6 +20,7 @@ In this project we will examine environmental effects of Texas storms:
 
 I'm going to start by loading in the necessary packages
 
+
 ```{r}
 pacman::p_load('tidyverse', 
                'sf', 
@@ -28,55 +29,61 @@ pacman::p_load('tidyverse',
                'kableExtra',
                'patchwork',
                'ggthemes',
+               'colorRamps',
                'stars',
                'terra')
 ```
+
+In this project I am working with multiple datasets that may have different crs's. I am going to be using functions to check and manually transform the crs's of the datasets
 
 ## Create two functions
 
 ```{r}
 # Function to check and align CRS of two sf objects
-check_crs <- function(target, reference) {
-  if (st_crs(target) == st_crs(reference)) {
+check_crs <- function(data1, data2) {
+  if (st_crs(data1) == st_crs(data2)) {
     message("CRSs match!")
-    return(target)  # return the original object
+    return(data1)  # return the original object
   } else {
     warning("CRSs do not match. Transforming target to match reference...")
-    target_transformed <- st_transform(target, st_crs(reference))
-    return(target_transformed)
+    data2 <- st_transform(data1, st_crs(data2))
+    return(st_crs(data2))
   }
 }
-
+# This function compares the crs's of two datasets - good for checking before plotting to avoid crashes
 
 # Function to check if we are working with espg 3083
-check_3083 <- function(target) {
-  if (st_crs(target)$epsg == 3083) {
+check_3083 <- function(data) {
+  if (st_crs(data)$epsg == 3083) {
     message("CRS ok")
-    return(target)  # return the original object
+    return(data)  # return the original object
   } else {
     warning("CRS does not conform, transforming now")
-    target_transformed <- st_transform(target, st_crs(3083))
-    return(target_transformed)
+    data_transformed <- st_transform(data, st_crs(3083))
+    return(data_transformed)
   }
 }
+# This function checks if a specific sf is in ESPG 3083 which is the Texas Centric Albers Equal Area
 ```
 
-## Data Aggregation
+## Data import
 
 ### Light data
+
+Each day has 2 `.tif` files
 
 ```{r}
 lights_07_1 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021038.h08v05.001.2021039064328.tif'))
 lights_07_2 <-  read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021038.h08v06.001.2021039064329.tif'))
 lights_16_1 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v05.001.2021048091106.tif'))
 lights_16_2 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v06.001.2021048091105.tif'))
-
 ```
 
-### Buildings & roads
+### Buildings 
 
+The buildings need a query to select all the building types including null buildings
 ```{r}
-houses <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
+buildings <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
                  query = "
     SELECT * FROM gis_osm_buildings_a_free_1
     WHERE (type IS NULL AND name IS NULL)
@@ -85,7 +92,7 @@ houses <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
 ```
 
 ### Road data
-
+This query acts to select the motorways from the road layer
 ```{r}
 roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
                  query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'",
@@ -94,143 +101,101 @@ roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
 
 ### Socioeconomic layers
 
+Lastly, we will want to look at the census tracts and median income 
 ```{r}
 st_layers(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'))
 
 income <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
                   layer = 'X19_INCOME', quiet = TRUE) %>% 
-  select(c('GEOID', 'B19013e1', 'B19013m1'))
+  select(c('GEOID', 
+           'B19013e1', 
+           'B19013m1')) # B19013e1 and B19013m1 are the median income
 
 census <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
-                  layer = 'ACS_2019_5YR_TRACT_48_TEXAS', quiet = TRUE)
+                  layer = 'ACS_2019_5YR_TRACT_48_TEXAS', 
+                  quiet = TRUE) # And the whole census data
 ```
 
-# Mosaiac the two days
+# Analysis
+To start this analysis we need to mosaic the two files (overlapping boundaries), then check the crs. I need to make sure that all my data are cropped to be in the Houston area so that I don't crash my computer. 
+
+## Mosaiac the two days
 
 ```{r}
 
 lights_7 <- st_mosaic(lights_07_1, lights_07_2)
-lights_7 <- check_3083(lights_7)
+
+
 
 lights_16 <- st_mosaic(lights_16_1, lights_16_2)
-lights_16 <- check_3083(lights_16)
-```
 
-# Plot the difference in two days
 
-```{r}
-lights_before <- tm_shape(lights_7, bbox = houston_bbox)+
-  tm_raster()
-
-lights_after <- tm_shape(lights_16, bbox = houston_bbox)+
-  tm_raster()
-
-huston_change <-  lights_7 - lights_16
-
-tm_shape(huston_change)+
-  tm_raster()
-```
-
-## Blackout mask
-
-```{r}
-huston_change <-  lights_7 - lights_16
-
-# Reclassify: 
-# Set categories for severity levels
-categories <- c("No Blackout", "Unburned")
-
-# Create reclassification matrix
-rcl <- matrix(c(-Inf, 200, 1, # group 1 ranges for Enhanced Regrowth
-                200, Inf, 2), # group 5 ranges for High Severity
-                ncol = 3, byrow = TRUE)
-
-# Use reclassification matrix to reclassify dNBR raster
-reclassified <- classify(rast(huston_change), rcl = rcl)
-
-reclassified[reclassified == 1] <- NA
+# Call in my two bbox's for huston, one as an st_bbox
 
 houston_bbox <- c(xmin = -96.5, xmax = -94.5, 
               ymin = 29, ymax = 30.5)
 
+houston_bbox_sf <- st_bbox(c(xmin = -96.5, xmax = -94.5, 
+              ymin = 29, ymax = 30.5), crs = "EPSG:4326")
 
-houston_blackout <- crop(reclassified, houston_bbox)
+# And crop my rasters using terra::crop
 
+lights_7_cropped <- st_crop(lights_7, houston_bbox_sf)
 
-
-blackout_mask <- st_as_sf(as.polygons(houston_blackout))
-
-blackout_mask <-check_3083(blackout_mask)
+lights_16_cropped <- st_crop(lights_16, houston_bbox_sf)
 ```
 
-## Roads
-
-```{R}
-# Join Roads
-
-check_crs(blackout_mask, st_as_sf(roads))
-
-roads_union <- st_union( roads) # Unify geometry
-
-roads_buffer <- st_buffer(roads_union, 200)
-
-blackout_final_roads <- st_intersection(blackout_mask, roads_buffer)
-
-houses <- check_3083(houses)
-
-blackout_final_roads <-  check_3083(blackout_final_roads)
-
-check_crs(blackout_final_roads, houses)
-
-blackout_buildings <- houses %>% 
-  st_filter(y = st_union(blackout_final_roads))
+Next I am going to make a set of maps comparing night light intensities before and after the two storms
 
 
-# Buildings 
+```{r}
+lights_before <- tm_shape(lights_7_cropped, bbox = houston_bbox_sf) +
+  tm_raster(col = names(lights_7_cropped)[1],
+            col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "yellow"))(7))) +
+  tm_legend(show = FALSE) +
+  tm_title("February 7", 
+           position = c("center", "top"),
+           size = 1.2,
+           padding = 0) +    # <- removes title box padding
+  tm_graticules(alpha = .3)+
+  tm_layout(frame = FALSE)
+
+lights_after <- tm_shape(lights_16_cropped, bbox = houston_bbox_sf) +
+  tm_raster(
+    col = names(lights_16_cropped)[1],  # automatically grab the band name
+    col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "yellow"))(7))
+  ) +
+  tm_legend(show = FALSE) +
+  tm_title("February 16", 
+           position = c("center", "top"),
+           size = 1.2,
+           padding = 0) +
+  tm_layout( frame = FALSE) +
+  tm_graticules(alpha = .3)
 
 
-
-homes_in_blackout <- blackout_buildings %>%
-  filter(!is.na(`VNP46A1.A2021038.h08v05.001.2021039064328.tif`))
-
-
-tm_shape(homes_in_blackout)+
-  tm_polygons()
+tmap_arrange(lights_before, lights_after)
 ```
 
-## Census
 
-```{R}
-# census
 
-#Left_join socioeconomic layers
 
-# To do this i need to change the name of a column in income
-colnames(income)[1] = 'GEOID_Data'
 
-layer_join <- left_join(census,income, by = 'GEOID_Data')
+```{r}
+lights_after <- tm_shape(lights_16_cropped, bbox = houston_bbox_sf) +
+  tm_raster(
+    col = names(lights_16_cropped)[1],  # automatically grab the band name
+    col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "yellow"))(7))
+  ) +
+  tm_legend(show = FALSE) +
+  tm_title("February 16", position = c("center", "top")) +
+  tm_graticules(alpha = .3)
 
-#Within soceoeconomic and homes experienced blackout st_join 
-layer_join <- check_3083(layer_join)
-
-blackout_buildings <- check_3083(blackout_buildings)
-
-blackout_layers <- st_join(blackout_buildings, layer_join, join = st_within)
-
-# Data wrangling to summarize median income by census tract
-
-blackout_summary <- blackout_layers %>% 
-  group_by(NAMELSAD) %>% 
-  summarise(median_income = median(B19013e1),
-            blackouts = sum(VNP46A1.A2021038.h08v05.001.2021039064328.tif)) %>% 
-  ungroup()
+lights_after
 ```
 
-## Map
-
-```{R}
-# Map 
 
 
 
-```
+
+

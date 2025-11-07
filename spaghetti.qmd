@@ -1,0 +1,216 @@
+---
+title: "Extreme weather events"
+author: 'Peter Vitale'
+date: '10/26/25'
+format: html
+editor: visual
+execute: 
+  cache: true
+  warning: false
+  message: false
+---
+
+In this project we will examine environmental effects of Texas storms:
+
+-   
+
+-   
+
+-   
+
+I'm going to start by loading in the necessary packages
+
+```{r}
+pacman::p_load('tidyverse', 
+               'sf', 
+               'here', 
+               'tmap', 
+               'kableExtra',
+               'patchwork',
+               'ggthemes',
+               'stars',
+               'terra')
+```
+
+## Create two functions
+
+```{r}
+# Function to check and align CRS of two sf objects
+check_crs <- function(target, reference) {
+  if (st_crs(target) == st_crs(reference)) {
+    message("CRSs match!")
+    return(target)  # return the original object
+  } else {
+    warning("CRSs do not match. Transforming target to match reference...")
+    target_transformed <- st_transform(target, st_crs(reference))
+    return(target_transformed)
+  }
+}
+
+
+# Function to check if we are working with espg 3083
+check_3083 <- function(target) {
+  if (st_crs(target)$epsg == 3083) {
+    message("CRS ok")
+    return(target)  # return the original object
+  } else {
+    warning("CRS does not conform, transforming now")
+    target_transformed <- st_transform(target, st_crs(3083))
+    return(target_transformed)
+  }
+}
+```
+
+## Data Aggregation
+
+### Light data
+
+```{r}
+lights_07_1 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021038.h08v05.001.2021039064328.tif'))
+lights_07_2 <-  read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021038.h08v06.001.2021039064329.tif'))
+lights_16_1 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v05.001.2021048091106.tif'))
+lights_16_2 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v06.001.2021048091105.tif'))
+
+```
+
+### Buildings & roads
+
+```{r}
+houses <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
+                 query = "
+    SELECT * FROM gis_osm_buildings_a_free_1
+    WHERE (type IS NULL AND name IS NULL)
+       OR type IN ('residential', 'apartments', 'house', 'static_caravan', 'detached')", 
+    quiet = TRUE)
+```
+
+### Road data
+
+```{r}
+roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
+                 query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'",
+                 quiet = TRUE)
+```
+
+# Analysis
+To start this analysis we need to mosaic the two files (overlapping boundaries), then check the crs
+
+## Mosaiac the two days
+
+```{r}
+
+lights_7 <- st_mosaic(lights_07_1, lights_07_2)
+lights_7 <- check_3083(lights_7)
+
+lights_16 <- st_mosaic(lights_16_1, lights_16_2)
+lights_16 <- check_3083(lights_16)
+```
+
+
+
+## Blackout mask
+
+```{r}
+huston_change <-  lights_7 - lights_16
+
+# Reclassify: 
+# Set categories for severity levels
+categories <- c("No Blackout", "blackout")
+
+# Create reclassification matrix
+rcl <- matrix(c(-Inf, 200, 1, # group 1 ranges for Enhanced Regrowth
+                200, Inf, 2), # group 5 ranges for High Severity
+                ncol = 3, byrow = TRUE)
+
+# Use reclassification matrix to reclassify dNBR raster
+reclassified <- classify(rast(huston_change), rcl = rcl)
+
+reclassified[reclassified == 1] <- NA
+
+houston_bbox <- c(xmin = -96.5, xmax = -94.5, 
+              ymin = 29, ymax = 30.5)
+
+
+houston_blackout <- crop(reclassified, houston_bbox)
+
+
+
+blackout_mask <- st_as_sf(as.polygons(houston_blackout))
+
+blackout_mask <-check_3083(blackout_mask)
+```
+
+## Roads
+
+```{R}
+# Join Roads
+
+check_crs(blackout_mask, st_as_sf(roads))
+
+roads_union <- st_union( roads) # Unify geometry
+
+roads_buffer <- st_buffer(roads_union, 200)
+
+blackout_final_roads <- st_difference(blackout_mask, roads_buffer)
+
+houses <- check_3083(houses)
+
+blackout_final_roads <-  check_3083(blackout_final_roads)
+
+check_crs(blackout_final_roads, houses)
+
+blackout_buildings <- houses %>% 
+  st_filter(y = st_union(blackout_final_roads))
+
+
+# Buildings 
+
+
+
+homes_in_blackout <- blackout_buildings %>%
+  filter(!is.na(`VNP46A1.A2021038.h08v05.001.2021039064328.tif`))
+
+
+tm_shape(homes_in_blackout)+
+  tm_polygons()
+```
+
+## Census
+
+```{R}
+# census
+
+#Left_join socioeconomic layers
+
+# To do this i need to change the name of a column in income
+colnames(income)[1] = 'GEOID_Data'
+
+layer_join <- left_join(census,income, by = 'GEOID_Data')
+
+#Within soceoeconomic and homes experienced blackout st_join 
+layer_join <- check_3083(layer_join)
+
+blackout_buildings <- check_3083(blackout_buildings)
+
+blackout_layers <- st_join(blackout_buildings, layer_join, join = st_within)
+
+# Joined cropped blackout with census tracts 
+
+
+# Data wrangling to summarize median income by census tract
+
+blackout_summary <- blackout_layers %>% 
+  group_by(NAMELSAD) %>% 
+  summarise(median_income = median(B19013e1),
+            blackouts = sum(VNP46A1.A2021038.h08v05.001.2021039064328.tif)) %>% 
+  ungroup()
+```
+
+## Map
+
+```{R}
+# Map 
+
+
+
+```
