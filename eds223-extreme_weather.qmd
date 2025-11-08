@@ -151,50 +151,91 @@ Next I am going to make a set of maps comparing night light intensities before a
 ```{r}
 lights_before <- tm_shape(lights_7_cropped, bbox = houston_bbox_sf) +
   tm_raster(col = names(lights_7_cropped)[1],
-            col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "yellow"))(7))) +
+            col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "#FAFF00"))(7))) +
   tm_legend(show = FALSE) +
   tm_title("February 7", 
            position = c("center", "top"),
            size = 1.2,
            padding = 0) +    # <- removes title box padding
-  tm_graticules(alpha = .3)+
+ tm_compass(type = 'rose', position = c('left','bottom'), size = 3)+ # Compass Rose
+tm_scalebar(position = c('left','bottom'))+
   tm_layout(frame = FALSE)
+
 
 lights_after <- tm_shape(lights_16_cropped, bbox = houston_bbox_sf) +
   tm_raster(
     col = names(lights_16_cropped)[1],  # automatically grab the band name
-    col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "yellow"))(7))
+    col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "#FAFF00"))(7))
   ) +
   tm_legend(show = FALSE) +
   tm_title("February 16", 
            position = c("center", "top"),
            size = 1.2,
            padding = 0) +
-  tm_layout( frame = FALSE) +
-  tm_graticules(alpha = .3)
+  tm_layout( frame = FALSE) 
 
 
 tmap_arrange(lights_before, lights_after)
 ```
 
-
-
-
+## Now we are going to use a reclassification matrix to make blackouts and non-blackouts 
 
 ```{r}
-lights_after <- tm_shape(lights_16_cropped, bbox = houston_bbox_sf) +
-  tm_raster(
-    col = names(lights_16_cropped)[1],  # automatically grab the band name
-    col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "yellow"))(7))
-  ) +
-  tm_legend(show = FALSE) +
-  tm_title("February 16", position = c("center", "top")) +
-  tm_graticules(alpha = .3)
+houston_change <-  lights_7 - lights_16
 
-lights_after
+houston_change[houston_change< 200] <- NA
+
+houston_bbox <- c(xmin = -96.5, xmax = -94.5, 
+              ymin = 29, ymax = 30.5)
+
+houston_blackout <- st_crop(houston_change, houston_bbox_sf)
+
+blackout_mask <- houston_blackout %>% 
+  st_as_sf() %>% 
+  st_make_valid()
+
+blackout_mask <-check_3083(blackout_mask)
 ```
 
+## Now lets buffer around the roads
 
+## Roads
+
+```{R}
+#| warning: False
+# Join Roads
+
+roads_union <- st_union(roads) # Unify geometry
+
+roads_buffer <- st_buffer(roads_union, 200)
+
+roads_buffer <- check_3083(roads_buffer)
+
+blackout_mask <-check_3083(blackout_mask)
+
+blackout_final_roads <- st_difference(blackout_mask, roads_buffer)
+
+# Now we need to merge on buildings
+
+# First check that buildings is in the right format
+
+buildings <- check_3083(buildings)
+
+blackout_buildings <- st_intersection(buildings, blackout_final_roads)
+
+blackout_buildings <- check_3083(blackout_buildings)
+```
+
+## Map houses in houston that lost power 
+
+```{r}
+tm_shape(blackout_buildings, bbox = houston_bbox_sf)+
+  tm_polygons()+
+  tm_title("Buildings that experienced a blackout in Houston, TX \n Between 2/7 and 2/16 in 2021",
+           padding = 0) +
+  tm_graticules()
+  
+```
 
 
 
