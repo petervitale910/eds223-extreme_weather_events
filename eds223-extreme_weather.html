@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Peter Vitale">
-<meta name="dcterms.date" content="2025-10-26">
+<meta name="dcterms.date" content="2025-11-10">
 
 <title>Extreme weather events</title>
 <style>
@@ -127,7 +127,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">October 26, 2025</p>
+      <p class="date">November 10, 2025</p>
     </div>
   </div>
   
@@ -137,6 +137,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 </header>
 
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="readme.png" class="img-fluid figure-img"></p>
+<p></p><figcaption class="figure-caption">Readme</figcaption><p></p>
+</figure>
+</div>
 <p>In this project we will examine environmental effects of Texas storms by:</p>
 <ul>
 <li><p>Finding the areas with blackouts using night lights data</p></li>
@@ -261,12 +267,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>lights_16_cropped <span class="ot">&lt;-</span> <span class="fu">st_crop</span>(lights_16, houston_bbox_sf)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Next I am going to make a set of maps comparing night light intensities before and after the two storms</p>
-<div class="cell" data-hash="eds223-extreme_weather_cache/html/unnamed-chunk-8_987303034d3b1b8ef8f10c7f4a800aae">
+<div class="cell" data-hash="eds223-extreme_weather_cache/html/unnamed-chunk-8_de941257a551fa35ab4356a100d110be">
 <div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For the initial plots of light difference I am going to exclude lower and upper values to show contrast</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>lights_16_cropped[lights_16_cropped<span class="sc">&lt;</span> <span class="dv">200</span><span class="sc">|</span> lights_16_cropped<span class="sc">&gt;</span> <span class="dv">1000</span>] <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>lights_7_cropped[lights_7_cropped <span class="sc">&lt;</span><span class="dv">200</span> <span class="sc">|</span> lights_7_cropped <span class="sc">&gt;</span> <span class="dv">1000</span>] <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>lights_7_cropped[lights_7_cropped <span class="sc">&lt;</span> <span class="dv">200</span> <span class="sc">|</span> lights_7_cropped <span class="sc">&gt;</span> <span class="dv">1000</span>] <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
 <span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>lights_complete <span class="ot">&lt;-</span> <span class="fu">c</span>(lights_16_cropped, lights_7_cropped) <span class="co"># Then stack the two lights</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>lights_complete <span class="ot">&lt;-</span> <span class="fu">c</span>(lights_7_cropped,lights_16_cropped) <span class="co"># Then stack the two lights</span></span>
 <span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="fu">tm_shape</span>(lights_complete) <span class="sc">+</span> <span class="co"># Base shape</span></span>
 <span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tm_raster</span>(<span class="at">col.scale =</span> <span class="fu">tm_scale</span>(<span class="at">values =</span> <span class="st">"blues"</span>), <span class="co"># Raster of the lights </span></span>
@@ -433,7 +439,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p><img src="eds223-extreme_weather_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>This analysis used satellite images to explore night light intensity in Houston before and after the February 2021 winter storm. Contrary to expectations, the post-storm image was brighter overall, which could indicate either inconsistencies in the data or temporal variation unrelated to blackout recovery. This represents an important limitation: satellite light data may be affected by atmospheric conditions, differences in calibration between sensors, or timing of image capture. The analysis also cited spatial resolution and generalization across census tracts as potential factors that mask localized outages. Despite these challenges, the analysis provides a very effective demonstration of the way in which remote sensing can both reveal and complicate interpretations about disaster impacts.</p>
+<p>Our analysis had a major limitation in the time frame that is available due to satellite conditions. The storms took place between February 10th–11th, 13th–17th, and 15th–20th, however due to weather conditions, the best time to compare the lights was the 7th and 16th. This fails to account for buildings that lost and then regained power, as well as buildings that lost power after the 16th. Furthermore, for the grouping by census tract we considered any census tract as a blackout tract if it even had only one building in a blackout. This may have skewed the outcomes of the box plot.</p>
 </section>
 </section>
 

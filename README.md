@@ -4,9 +4,7 @@ Homework 3 for EDS 223, in which we will examine blackouts following a storm in 
 
 This repo structure:
 
-```bash
-tree -L 3 -I ".git|*.Rproj|*_cache|*_files|__pycache__|.Rhistory|.RData|.DS_Store|*.html|ACS_2019_5YR_TRACT_48_TEXAS.gdb|VNP46A1"
-```
+![File Path](filepath.png)
 
 # Data access
 
@@ -21,8 +19,8 @@ All data was publicly available and cited. For data use please see references se
 
 #### Data
 
-United States Environmental Protection Agency. 2015. EJSCREEN. Retrieved: November 5th 2025 from [epa.gov](www.epa.gov/ejscreen)
+NASA LAADS DAAC. VIIRS Day/Night Band Nighttime Lights VNP46A1 (Tiles h08v05, h08v06). NASA Level-1 and Atmospheric Archive & Distribution System Distributed Active Archive Center (LAADS DAAC), 2021. Retrieved November 10th, 2025 from https://ladsweb.modaps.eosdis.nasa.gov/missions-and-measurements/viirs/
 
-Nelson, Robert K., LaDale Winling, et al. "Mapping Inequality: Redlining in New Deal America." Edited by Robert K. Nelson. American Panorama: An Atlas of United States History, 2023. Retrieved: October 16th 2025 from [https://dsl.richmond.edu/panorama/redlining](https://dsl.richmond.edu/panorama/redlining/data)
+Geofabrik GmbH. OpenStreetMap Data Extracts: Texas Roads and Buildings. OpenStreetMap contributors, 2021. Retrieved November 10th, 2025 from https://download.geofabrik.de/north-america/us/texas.html
 
-GBIF: The Global Biodiversity Information Facility (2021) GBIF. Retrieved: October 16th 2025 from (<https://www.gbif.org/>)
+U.S. Census Bureau. American Community Survey 2019 5-Year Estimates (Texas Census Tracts). United States Census Bureau, 2019. Retrieved November 10th, 2025 from https://www.census.gov/programs-surveys/acs

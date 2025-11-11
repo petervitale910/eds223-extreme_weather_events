@@ -1,7 +1,7 @@
 ---
 title: "Extreme weather events"
 author: 'Peter Vitale'
-date: '10/26/25'
+date: '11/10/25'
 format: html
 editor: visual
 execute: 
@@ -12,16 +12,15 @@ execute:
 
 In this project we will examine environmental effects of Texas storms by:
 
--  Finding the areas with blackouts using night lights data
+-   Finding the areas with blackouts using night lights data
 
--  Finding which homes experienced a power outage
+-   Finding which homes experienced a power outage
 
--  Finding which census tracts experienced blackouts
+-   Finding which census tracts experienced blackouts
 
--  Finding the median income of those who experienced a blackout
+-   Finding the median income of those who experienced a blackout
 
 I'm going to start by loading in the necessary packages
-
 
 ```{r}
 pacman::p_load('tidyverse', 
@@ -82,9 +81,10 @@ lights_16_1 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v05
 lights_16_2 <- read_stars(here::here('data', 'VNP46A1', 'VNP46A1.A2021047.h08v06.001.2021048091105.tif'))
 ```
 
-### Buildings 
+### Buildings
 
 The buildings need a query to select all the building types including null buildings
+
 ```{r}
 buildings <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
                  query = "
@@ -95,7 +95,9 @@ buildings <- st_read(here::here('data', 'gis_osm_buildings_a_free_1.gpkg'),
 ```
 
 ### Road data
+
 This query acts to select the motorways from the road layer
+
 ```{r}
 roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
                  query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'",
@@ -104,7 +106,8 @@ roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
 
 ### Socioeconomic layers
 
-Lastly, we will want to look at the census tracts and median income 
+Lastly, we will want to look at the census tracts and median income
+
 ```{r}
 income <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
                   layer = 'X19_INCOME', quiet = TRUE) %>% 
@@ -118,7 +121,8 @@ census <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
 ```
 
 ## Analysis
-To start this analysis we need to mosaic the two files (overlapping boundaries), then check the crs. I need to make sure that all my data are cropped to be in the Houston area so that I don't crash my computer. 
+
+To start this analysis we need to mosaic the two files (overlapping boundaries), then check the crs. I need to make sure that all my data are cropped to be in the Houston area so that I don't crash my computer.
 
 ### Mosaiac the two days
 
@@ -143,15 +147,14 @@ lights_16_cropped <- st_crop(lights_16, houston_bbox_sf)
 
 Next I am going to make a set of maps comparing night light intensities before and after the two storms
 
-
 ```{r}
 #| warning: False
 
 # For the initial plots of light difference I am going to exclude lower and upper values to show contrast
 lights_16_cropped[lights_16_cropped< 200| lights_16_cropped> 1000] <- NA
-lights_7_cropped[lights_7_cropped <200 | lights_7_cropped > 1000] <- NA
+lights_7_cropped[lights_7_cropped < 200 | lights_7_cropped > 1000] <- NA
 
-lights_complete <- c(lights_16_cropped, lights_7_cropped) # Then stack the two lights
+lights_complete <- c(lights_7_cropped,lights_16_cropped) # Then stack the two lights
 
 tm_shape(lights_complete) + # Base shape
   tm_raster(col.scale = tm_scale(values = "blues"), # Raster of the lights 
@@ -172,7 +175,6 @@ tm_shape(lights_complete) + # Base shape
 
 
 ```
-
 
 Now we are going to use the change in the lights to see which areas and buildings had a blackout
 
@@ -228,7 +230,7 @@ blackout_buildings <- st_intersection(buildings, blackout_final_roads)
 blackout_buildings <- check_3083(blackout_buildings)
 ```
 
-### Map houses in houston that lost power 
+### Map houses in houston that lost power
 
 Now we can finally make a map of the houses that lost power
 
@@ -243,7 +245,6 @@ tm_shape(blackout_buildings, bbox = houston_bbox_sf)+
   
 ```
 
-
 Since houses below 200 nW cm-2sr-1 change were assigned NA we now have an idea of how many buildings lost power.
 
 ```{r}
@@ -254,9 +255,10 @@ print(paste0(nrow(blackout_buildings),
 
 ### Soceoeconomic analysis
 
-We are going to examine census tracts in which buildings experienced a blackout 
+We are going to examine census tracts in which buildings experienced a blackout
 
 First lets join the two
+
 ```{r}
 
 # To do this i need to change the name of a column in income
@@ -326,4 +328,4 @@ ggplot(blackout_tract, aes(x = blackout, y = b19013e1))+
 
 ```
 
-This analysis used satellite images to explore night light intensity in Houston before and after the February 2021 winter storm. Contrary to expectations, the post-storm image was brighter overall, which could indicate either inconsistencies in the data or temporal variation unrelated to blackout recovery. This represents an important limitation: satellite light data may be affected by atmospheric conditions, differences in calibration between sensors, or timing of image capture. The analysis also cited spatial resolution and generalization across census tracts as potential factors that mask localized outages. Despite these challenges, the analysis provides a very effective demonstration of the way in which remote sensing can both reveal and complicate interpretations about disaster impacts.
+Our analysis had a major limitation in the time frame that is available due to satellite conditions. The storms took place between February 10th–11th, 13th–17th, and 15th–20th, however due to weather conditions, the best time to compare the lights was the 7th and 16th. This fails to account for buildings that lost and then regained power, as well as buildings that lost power after the 16th. Furthermore, for the grouping by census tract we considered any census tract as a blackout tract if it even had only one building in a blackout. This may have skewed the outcomes of the box plot.
