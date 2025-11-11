@@ -10,13 +10,15 @@ execute:
   message: false
 ---
 
-In this project we will examine environmental effects of Texas storms:
+In this project we will examine environmental effects of Texas storms by:
 
--   
+-  Finding the areas with blackouts using night lights data
 
--   
+-  Finding which homes experienced a power outage
 
--   
+-  Finding which census tracts experienced blackouts
+
+-  Finding the median income of those who experienced a blackout
 
 I'm going to start by loading in the necessary packages
 
@@ -24,7 +26,8 @@ I'm going to start by loading in the necessary packages
 ```{r}
 pacman::p_load('tidyverse', 
                'sf', 
-               'here', 
+               'here',
+               'janitor',
                'tmap', 
                'kableExtra',
                'patchwork',
@@ -47,7 +50,7 @@ check_crs <- function(data1, data2) {
   } else {
     warning("CRSs do not match. Transforming target to match reference...")
     data2 <- st_transform(data1, st_crs(data2))
-    return(st_crs(data2))
+    return((data2))
   }
 }
 # This function compares the crs's of two datasets - good for checking before plotting to avoid crashes
@@ -103,8 +106,6 @@ roads <- st_read(here::here('data', 'gis_osm_roads_free_1.gpkg'),
 
 Lastly, we will want to look at the census tracts and median income 
 ```{r}
-st_layers(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'))
-
 income <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
                   layer = 'X19_INCOME', quiet = TRUE) %>% 
   select(c('GEOID', 
@@ -116,24 +117,19 @@ census <- st_read(here::here('data', 'ACS_2019_5YR_TRACT_48_TEXAS.gdb'),
                   quiet = TRUE) # And the whole census data
 ```
 
-# Analysis
+## Analysis
 To start this analysis we need to mosaic the two files (overlapping boundaries), then check the crs. I need to make sure that all my data are cropped to be in the Houston area so that I don't crash my computer. 
 
-## Mosaiac the two days
+### Mosaiac the two days
 
 ```{r}
 
-lights_7 <- st_mosaic(lights_07_1, lights_07_2)
-
-
+lights_7 <- st_mosaic(lights_07_1, lights_07_2) # Mosaiac our two days, essentially like putting puzzle pieces together that have overlapping borders
 
 lights_16 <- st_mosaic(lights_16_1, lights_16_2)
 
 
-# Call in my two bbox's for huston, one as an st_bbox
-
-houston_bbox <- c(xmin = -96.5, xmax = -94.5, 
-              ymin = 29, ymax = 30.5)
+# Call in my two bbox for houston
 
 houston_bbox_sf <- st_bbox(c(xmin = -96.5, xmax = -94.5, 
               ymin = 29, ymax = 30.5), crs = "EPSG:4326")
@@ -149,57 +145,54 @@ Next I am going to make a set of maps comparing night light intensities before a
 
 
 ```{r}
-lights_before <- tm_shape(lights_7_cropped, bbox = houston_bbox_sf) +
-  tm_raster(col = names(lights_7_cropped)[1],
-            col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "#FAFF00"))(7))) +
-  tm_legend(show = FALSE) +
-  tm_title("February 7", 
-           position = c("center", "top"),
-           size = 1.2,
-           padding = 0) +    # <- removes title box padding
- tm_compass(type = 'rose', position = c('left','bottom'), size = 3)+ # Compass Rose
-tm_scalebar(position = c('left','bottom'))+
-  tm_layout(frame = FALSE)
+#| warning: False
+
+# For the initial plots of light difference I am going to exclude lower and upper values to show contrast
+lights_16_cropped[lights_16_cropped< 200| lights_16_cropped> 1000] <- NA
+lights_7_cropped[lights_7_cropped <200 | lights_7_cropped > 1000] <- NA
+
+lights_complete <- c(lights_16_cropped, lights_7_cropped) # Then stack the two lights
+
+tm_shape(lights_complete) + # Base shape
+  tm_raster(col.scale = tm_scale(values = "blues"), # Raster of the lights 
+            col.legend = tm_legend(title = "Light Intensity\n(nW cm²sr¹)", # Legend title
+            title.size = 1, # Legend title size
+            text.size = 0.7)) + # Legend text size
+  tm_facets(ncol = 2, # Make a plot of both days
+            free.scales = FALSE) + # This is deprecated but is the only way I've found to have one legend
+  tm_title("Houston Night Lights: Before and After Feb 2021 Storm",
+           size = 1.5) + # Title and size
+  tm_layout(legend.outside = TRUE,  # Put legend on the outside
+            panel.labels = c("February 7, 2021 (Before)",
+                    "February 16, 2021 (After)"),
+            bg.color = 'black') +
+  tm_graticules(lwd = 0.2,  # Small graticules
+                col = "grey", 
+                alpha = 0.5)
 
 
-lights_after <- tm_shape(lights_16_cropped, bbox = houston_bbox_sf) +
-  tm_raster(
-    col = names(lights_16_cropped)[1],  # automatically grab the band name
-    col.scale = tm_scale_continuous(values = colorRampPalette(c("black", "#FAFF00"))(7))
-  ) +
-  tm_legend(show = FALSE) +
-  tm_title("February 16", 
-           position = c("center", "top"),
-           size = 1.2,
-           padding = 0) +
-  tm_layout( frame = FALSE) 
-
-
-tmap_arrange(lights_before, lights_after)
 ```
 
-## Now we are going to use a reclassification matrix to make blackouts and non-blackouts 
+
+Now we are going to use the change in the lights to see which areas and buildings had a blackout
 
 ```{r}
-houston_change <-  lights_7 - lights_16
+houston_change <-  lights_7 - lights_16 # Find the difference between the two days
 
-houston_change[houston_change< 200] <- NA
+houston_change[houston_change< 200] <- NA # Make anything with a difference of under 200 NA
 
-houston_bbox <- c(xmin = -96.5, xmax = -94.5, 
-              ymin = 29, ymax = 30.5)
+houston_blackout <- st_crop(houston_change, houston_bbox_sf) # Crop to houston bbox
 
-houston_blackout <- st_crop(houston_change, houston_bbox_sf)
-
-blackout_mask <- houston_blackout %>% 
+blackout_mask <- houston_blackout %>%  # Make it polygons and validate st
   st_as_sf() %>% 
   st_make_valid()
 
-blackout_mask <-check_3083(blackout_mask)
+blackout_mask <-check_3083(blackout_mask) # Make sure we are in 3083
 ```
 
-## Now lets buffer around the roads
+Now lets buffer around the roads
 
-## Roads
+### Roads
 
 ```{R}
 #| warning: False
@@ -207,36 +200,130 @@ blackout_mask <-check_3083(blackout_mask)
 
 roads_union <- st_union(roads) # Unify geometry
 
-roads_buffer <- st_buffer(roads_union, 200)
+roads_buffer <- st_buffer(roads_union, 200) # Make a 200m buffer
 
+# Double check they are both in the right crs
 roads_buffer <- check_3083(roads_buffer)
 
 blackout_mask <-check_3083(blackout_mask)
 
+# And add buffered roads to the blackout mask 
 blackout_final_roads <- st_difference(blackout_mask, roads_buffer)
+```
 
-# Now we need to merge on buildings
+### Add buildings to blackout mask
 
-# First check that buildings is in the right format
+```{r}
+
+# Now we need to add some buildings buildings
+
+# First check that buildings is in the right crs
 
 buildings <- check_3083(buildings)
 
+# Then find the intersection 
 blackout_buildings <- st_intersection(buildings, blackout_final_roads)
 
+# And just in case some weirdness happened, check again
 blackout_buildings <- check_3083(blackout_buildings)
 ```
 
-## Map houses in houston that lost power 
+### Map houses in houston that lost power 
+
+Now we can finally make a map of the houses that lost power
 
 ```{r}
 tm_shape(blackout_buildings, bbox = houston_bbox_sf)+
   tm_polygons()+
   tm_title("Buildings that experienced a blackout in Houston, TX \n Between 2/7 and 2/16 in 2021",
            padding = 0) +
-  tm_graticules()
+  tm_graticules(lwd = 0.2,  # Small graticules
+                col = "grey", 
+                alpha = 0.5)
   
 ```
 
 
+Since houses below 200 nW cm-2sr-1 change were assigned NA we now have an idea of how many buildings lost power.
+
+```{r}
+#| code-fold: true
+print(paste0(nrow(blackout_buildings), 
+                     ' buildings experienced a blackout'))
+```
+
+### Soceoeconomic analysis
+
+We are going to examine census tracts in which buildings experienced a blackout 
+
+First lets join the two
+```{r}
+
+# To do this i need to change the name of a column in income
+colnames(income)[1] = 'GEOID_Data'
+
+layer_join <- left_join(census,income, by = 'GEOID_Data')
+
+# Clean column names
+layer_join <- layer_join %>% 
+  clean_names()
+
+# Check crs's
+layer_join <- check_3083(layer_join)
+
+blackout_buildings <- check_3083(blackout_buildings)
+
+# Join census data
+blackout_layers <- st_join(blackout_buildings, layer_join, join = st_within)
+
+# Now I can compare the two and make a map showing the comparison
+
+layer_join$blackout <- factor(layer_join$namelsad %in% unique(blackout_layers$namelsad),
+                              levels = c(TRUE, FALSE)) # Here I make a new column with trye or false values, based on whether the census tract experienced a blackout
+
+blackout_tract <- layer_join %>% 
+  select(namelsad, blackout, b19013e1) # Make a mapping df
+```
+
+Now we can make a census tract plot
+
+```{r}
+tm_shape(blackout_tract, bbox = houston_bbox_sf) +
+  tm_polygons(
+    fill = "blackout", # Fills based on whether a blackout happened in a census tract
+    fill.scale = tm_scale_discrete(
+      values = c("TRUE" = "#35012C",   # dark purple for blackout
+                 "FALSE" = "#E1DABD"), # light beige for no blackout
+    ),
+    fill.legend = tm_legend(title = "Blackout Occurrence",
+                            labels = c("TRUE" = "Experienced Blackout",   # light beige for blackout
+                 "FALSE" = "No Blackout")),
+    col = "grey"
+  ) +
+  tm_title("Census Tracts with Blackouts in Houston, TX") +
+  tm_layout(bg.color = 'blue')+
+  tm_graticules(lwd = 0.2,  # Small graticules
+                col = "grey", 
+                alpha = 0.5)
 
 
+```
+
+Lastly we make a boxplot of blackout occurance and census tract
+
+```{r}
+#| warning: False
+ggplot(blackout_tract, aes(x = blackout, y = b19013e1))+ 
+  geom_boxplot()+
+  ggthemes::theme_clean()+ # Favorite theme
+  labs(x = 'Blackout Occurance', # Rename axes
+       y = 'Median Income',
+       title = 'Blackout Occurance and Medium Income')+
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  scale_x_discrete(labels = c("TRUE" = "Experienced Blackout",   # light beige for blackout
+                 "FALSE" = "No Blackout"))
+
+
+```
+
+This analysis used satellite images to explore night light intensity in Houston before and after the February 2021 winter storm. Contrary to expectations, the post-storm image was brighter overall, which could indicate either inconsistencies in the data or temporal variation unrelated to blackout recovery. This represents an important limitation: satellite light data may be affected by atmospheric conditions, differences in calibration between sensors, or timing of image capture. The analysis also cited spatial resolution and generalization across census tracts as potential factors that mask localized outages. Despite these challenges, the analysis provides a very effective demonstration of the way in which remote sensing can both reveal and complicate interpretations about disaster impacts.

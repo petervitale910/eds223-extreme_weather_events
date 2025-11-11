@@ -50,3 +50,6 @@ rsconnect/
 
 # Data folder
 data/
+
+# Spaghetti
+spaghetti.qmd
